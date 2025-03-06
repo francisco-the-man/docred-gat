@@ -1,0 +1,32 @@
+
+# Data files
+DocRED/
+*.json
+*.npy
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+*.dylib
+
+# Python
+__pycache__/
+*.py[cod]
+*.class
+
+# Model checkpoints
+*.pt
+*.ckpt
+checkpoints/
+
+# Logs
+wandb/
+*.log
+*.out
+*.err
+
+# IDE
+.idea/
+.vscode/
+
