@@ -2,7 +2,18 @@ import argparse
 import os
 import datetime
 
-import numpy as np
+import traceback
+import sys
+try:
+    import numpy as np
+except Exception as e:
+    print('Error importing numpy:')
+    print('Exception type:', type(e))
+    print('Exception message:', str(e))
+    traceback.print_exc()
+    sys.exit(1)
+
+
 import torch
 import ujson as json
 from torch.cuda.amp import GradScaler
@@ -97,18 +108,17 @@ def train(args, model, train_features, dev_features):
                         best_output = dev_output
 
                         ckpt_file = os.path.join(args.save_path, "best.ckpt")
-                        print(f"saving model checkpoint into {ckpt_file} ...")
+                        print("saving model checkpoint into {} ...".format(ckpt_file))
                         torch.save(model.state_dict(), ckpt_file)
                         
-                    if epoch == train_iterator[-1]: # last epoch
-
+                    if epoch == train_iterator[-1]:  # last epoch
                         ckpt_file = os.path.join(args.save_path, "last.ckpt")
-                        print(f"saving model checkpoint into {ckpt_file} ...")
+                        print("saving model checkpoint into {} ...".format(ckpt_file))
                         torch.save(model.state_dict(), ckpt_file)
                         
                         pred_file = os.path.join(args.save_path, args.pred_file)
                         score_file = os.path.join(args.save_path, "scores.csv")
-                        results_file = os.path.join(args.save_path, f"topk_{args.pred_file}")
+                        results_file = os.path.join(args.save_path, "topk_{}".format(args.pred_file))
 
                         dump_to_file(best_offi_results, pred_file, best_output, score_file, best_results, results_file)
                      
@@ -134,7 +144,7 @@ def evaluate(args, model, features, tag="dev"):
     scores, topks = [], []
     attns = []
     
-    for batch in tqdm(dataloader, desc=f"Evaluating batches"):
+    for batch in tqdm(dataloader, desc="Evaluating batches"):
         model.eval()
 
         if args.save_attn:
@@ -190,36 +200,44 @@ def evaluate(args, model, features, tag="dev"):
 
     if args.save_attn:
         
-        attns_path = os.path.join(args.load_path, f"{os.path.splitext(args.test_file)[0]}.attns")        
-        print(f"saving attentions into {attns_path} ...")
+        attns_path = os.path.join(args.load_path, "{}.attns".format(os.path.splitext(args.test_file)[0]))
+        print("saving attentions into {} ...".format(attns_path))
         with open(attns_path, "wb") as f:
             pickle.dump(attns, f)
 
     return scores, output, official_results, results
 
-def dump_to_file(offi:list, offi_path: str, scores: list, score_path: str, results: list = [], res_path: str = "", thresh: float = None):
+def dump_to_file(offi, offi_path, scores, score_path, results=[], res_path="", thresh=None):
     '''
     dump scores and (top-k) predictions to file.
     
+    Args:
+        offi (list): official predictions
+        offi_path (str): path to save official predictions
+        scores (list): evaluation scores
+        score_path (str): path to save scores
+        results (list, optional): top-k predictions. Defaults to [].
+        res_path (str, optional): path to save top-k results. Defaults to "".
+        thresh (float, optional): threshold value. Defaults to None.
     '''
-    print(f"saving official predictions into {offi_path} ...")
+    print("saving official predictions into {} ...".format(offi_path))
     json.dump(offi, open(offi_path, "w"))
     
-    print(f"saving evaluations into {score_path} ...")
+    print("saving evaluations into {} ...".format(score_path))
     headers = ["precision", "recall", "F1"]
-    scores_pd = pd.DataFrame.from_dict(scores, orient="index", columns = headers)
+    scores_pd = pd.DataFrame.from_dict(scores, orient="index", columns=headers)
     print(scores_pd)
     scores_pd.to_csv(score_path, sep='\t')
 
     if len(results) != 0:
         assert res_path != ""
-        print(f"saving topk results into {res_path} ...")
+        print("saving topk results into {} ...".format(res_path))
         json.dump(results, open(res_path, "w"))
     
     if thresh != None:
         thresh_path = os.path.join(os.path.dirname(offi_path), "thresh")
         if not os.path.exists(thresh_path):
-            print(f"saving threshold into {thresh_path} ...")
+            print("saving threshold into {} ...".format(thresh_path))
             json.dump(thresh, open(thresh_path, "w"))        
 
     return
@@ -235,7 +253,7 @@ def main():
 
     # create directory to save checkpoints and predicted files
     time = str(datetime.datetime.now()).replace(' ','_')
-    save_path_ = os.path.join(args.save_path, f"{time}")
+    save_path_ = os.path.join(args.save_path, "{}".format(time))
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     args.n_gpu = torch.cuda.device_count()
@@ -298,15 +316,15 @@ def main():
             test_scores, test_output, official_results, results = evaluate(args, model, test_features, tag="test")   
             wandb.log(test_scores)
 
-            offi_path = os.path.join(args.load_path, args.pred_file)
-            score_path = os.path.join(args.load_path, f"{basename}_scores.csv")
-            res_path = os.path.join(args.load_path, f"topk_{args.pred_file}")
+            offi_path = os.path.join(args.load_path, "fused_{}".format(args.pred_file))
+            score_path = os.path.join(args.load_path, "{}_fused_scores.csv".format(basename))
+            res_path = os.path.join(args.load_path, "topk_{}".format(args.pred_file))
 
             dump_to_file(official_results, offi_path, test_output, score_path, results, res_path)          
 
         else: # inference stage fusion
 
-            results = json.load(open(os.path.join(args.load_path, f"topk_{args.pred_file}")))
+            results = json.load(open(os.path.join(args.load_path, "topk_{}".format(args.pred_file))))
 
             # formulate pseudo documents from top-k (k=num_labels in arguments) predictions
             pseudo_test_features = read(test_file, tokenizer, max_seq_length=args.max_seq_length, single_results = results)
@@ -316,7 +334,7 @@ def main():
             if 'thresh' in os.listdir(args.load_path):
                 with open(os.path.join(args.load_path, "thresh")) as f:
                     thresh = json.load(f)
-                print(f"Threshold loaded from file: {thresh}")
+                print("Threshold loaded from file: {}".format(thresh))
             else:
                 thresh = None
             
@@ -332,8 +350,8 @@ def main():
             
             wandb.log({"dev_F1": merged_re[-1] * 100, "dev_evi_F1": merged_evi[-1] * 100, "dev_F1_ign": merged_re_ign[-1] * 100})
 
-            offi_path = os.path.join(args.load_path, f"fused_{args.pred_file}")
-            score_path = os.path.join(args.load_path, f"{basename}_fused_scores.csv")
+            offi_path = os.path.join(args.load_path, "fused_{}".format(args.pred_file))
+            score_path = os.path.join(args.load_path, "{}_fused_scores.csv".format(basename))
             dump_to_file(merged_offi, offi_path, merged_output, score_path, thresh = thresh)
 
 

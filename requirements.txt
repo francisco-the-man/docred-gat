@@ -1,0 +1,16 @@
+numpy==1.22.4
+torch
+torchvision
+torchaudio
+networkx<3.0
+torch-geometric
+transformers
+wandb
+tqdm
+opt_einsum
+ujson
+scikit-learn
+pandas
+matplotlib
+datetime
+pickle-mixin
